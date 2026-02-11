@@ -5,9 +5,46 @@ import requests
 
 cookie_list = os.getenv("COOKIE_QUARK").split('\n|&&')
 
-# 替代 notify 功能
+# 替代 notify 功能，新增 PushPlus 推送
 def send(title, message):
+    # 原有打印逻辑（保留，确保 GitHub Actions 日志正常输出）
     print(f"{title}: {message}")
+    
+    # ===== PushPlus 微信推送逻辑 =====
+    # 从环境变量读取 PushPlus Token（避免硬编码）
+    pushplus_token = os.getenv("PUSHPLUS_TOKEN")
+    if not pushplus_token:
+        print("❌ 未配置 PUSHPLUS_TOKEN，跳过微信推送")
+        return
+    
+    # PushPlus 官方 API 地址
+    pushplus_url = "https://www.pushplus.plus/send"
+    # 构造推送参数（markdown 格式让微信排版更友好）
+    data = {
+        "token": pushplus_token,
+        "title": title,
+        "content": message.replace("\n", "<br>"),  # 换行转 HTML 换行符，适配 markdown
+        "template": "markdown"
+    }
+    
+    try:
+        # 发送推送请求（设置 15 秒超时，避免卡壳）
+        response = requests.post(pushplus_url, json=data, timeout=15)
+        response.raise_for_status()  # 触发 HTTP 错误（如 401/500）
+        res_json = response.json()
+        
+        if res_json.get("code") == 200:
+            print("✅ PushPlus 微信推送成功")
+        else:
+            print(f"❌ PushPlus 推送失败: {res_json.get('msg', '未知错误')}")
+    except requests.exceptions.RequestException as e:
+        # 捕获网络超时/HTTP 错误
+        print(f"❌ PushPlus 推送网络异常: {str(e)}")
+    except Exception as e:
+        # 捕获其他未知错误
+        print(f"❌ PushPlus 推送未知错误: {str(e)}")
+
+# 以下代码保持不变（get_env/Quark类/main等）
 
 # 获取环境变量 
 def get_env(): 
