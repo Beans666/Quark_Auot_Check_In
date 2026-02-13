@@ -2,107 +2,49 @@ name: Quark签到
 
 on:
   schedule:
-    - cron: '45 2 * * *'   # 北京时间 09:00 (UTC 01:00)
-    - cron: '0 5 * * *'   # 北京时间 13:00 (UTC 05:00)
+    - cron: '25 5 * * *'   # 北京时间 13:25 (UTC+8 → UTC 05:25) （仅用于验证）
   workflow_dispatch:      # 允许手动触发
 
 jobs:
-  check-if-already-signed:
-    runs-on: ubuntu-latest
-    outputs:
-      skip: ${{ steps.check.outputs.skip }}
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4  # 升级到最新版，更稳定
-
-      - name: 恢复签到成功记录缓存
-        id: cache-success-restore
-        uses: actions/cache@v4
-        with:
-          path: .last_success_date
-          # 关键：用北京时间的日期作为缓存Key，避免时区错位
-          key: last-success-marker-${{ runner.os }}-${{ steps.beijing_date.outputs.date }}
-        # 先获取北京时间的日期，再恢复缓存
-      - name: 获取北京时间日期
-        id: beijing_date
-        run: |
-          beijing_date=$(TZ='Asia/Shanghai' date '+%Y-%m-%d')
-          echo "date=$beijing_date" >> "$GITHUB_OUTPUT"
-          echo "当前北京时间日期: $beijing_date"
-
-      - name: 判断是否已签到
-        id: check
-        run: |
-          current_date=${{ steps.beijing_date.outputs.date }}
-          echo "当前北京时间: $current_date"
-
-          if [ -f .last_success_date ]; then
-            last_date=$(cat .last_success_date)
-            echo "上次签到日期: $last_date"
-            if [ "$last_date" = "$current_date" ]; then
-              echo "今天已成功签到，跳过执行。"
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
-
-          echo "今天尚未签到，继续执行。"
-          echo "skip=false" >> "$GITHUB_OUTPUT"
-
-  sign-in:
-    needs: check-if-already-signed
-    if: needs.check-if-already-signed.outputs.skip == 'false'
+  verify-sign:
     runs-on: ubuntu-latest
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 随机延迟（适配所有定时/手动触发，避免固定时间）
+      - name: 输出触发信息（验证定时生效）
         run: |
-          # 区分早上/下午：早上延迟0-60秒，下午/手动0-30秒
-          if [[ "${{ github.event_name }}" == "schedule" && "${{ github.event.schedule }}" =~ "0 1 * * *" ]]; then
-            delay=$((RANDOM % 60))
-            echo "早上签到（北京时间9点），延迟 $delay 秒后开始.."
-          else
-            delay=$((RANDOM % 30))
-            echo "下午/手动触发，延迟 $delay 秒后开始.."
-          fi
+          echo "===== 定时触发验证 ====="
+          echo "当前北京时间: $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')"
+          echo "定时任务已成功触发！"
+
+      - name: 随机延迟（模拟真实执行）
+        run: |
+          delay=$((RANDOM % 10))
+          echo "延迟 $delay 秒后执行后续步骤.."
           sleep $delay
 
       - name: 设置Python环境
-        uses: actions/setup-python@v5  # 升级到最新版
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
-          cache: 'pip'  # 缓存pip依赖，加速执行
+          python-version: '3.10'
 
       - name: 安装依赖
         run: pip install requests
 
-      - name: 执行签到脚本
+      - name: 执行签到脚本（验证执行）
         env:
           COOKIE_QUARK: ${{ secrets.COOKIE_QUARK }}
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
-        run: python checkIn_Quark.py
-
-      - name: 标记今天签到成功
-        if: success()
         run: |
-          date_str=${{ steps.beijing_date.outputs.date }}
-          echo "$date_str" > .last_success_date
-          echo "已记录成功签到日期: $date_str"
+          echo "执行签到脚本（验证模式）"
+          python checkIn_Quark.py || echo "脚本执行完成（即使报错也说明定时生效）"
 
-      - name: 保存成功记录到缓存
-        if: success()
-        uses: actions/cache@v4
-        with:
-          path: .last_success_date
-          key: last-success-marker-${{ runner.os }}-${{ steps.beijing_date.outputs.date }}
-
-      - name: 清理旧的工作流记录（降低清理频率，保留排查日志）
+      - name: 清理旧记录（轻量化）
         uses: Mattraks/delete-workflow-runs@main
         if: always()
         with:
           token: ${{ github.token }}
           repository: ${{ github.repository }}
-          retain_days: 1  # 保留1天日志，方便排查
-          keep_minimum_runs: 30  # 最少保留30条，避免日志被删光
+          retain_days: 0
+          keep_minimum_runs: 10
