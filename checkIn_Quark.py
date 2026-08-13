@@ -1,30 +1,52 @@
-import os 
-import re 
-import sys 
-import requests 
+import os
+import re
+import sys
+import requests
+import json
 
 cookie_list = os.getenv("COOKIE_QUARK").split('\n|&&')
 
-# 替代 notify 功能
+# ========== 改造后的通知函数，兼容PushPlus推送 ==========
 def send(title, message):
+    # 控制台打印日志（保留原有功能）
     print(f"{title}: {message}")
+    
+    # 获取pushplus密钥
+    push_token = os.getenv("PUSHPLUS_TOKEN", "").strip()
+    # 为空直接跳过推送
+    if not push_token:
+        return
+    
+    url = "https://www.pushplus.plus/send"
+    payload = {
+        "token": push_token,
+        "title": title,
+        "content": message,
+        "template": "html"
+    }
+    headers = {"Content‑Type": "application/json"}
+    try:
+        res = requests.post(url, data=json.dumps(payload), headers=headers, timeout=12)
+        print("✅ PushPlus推送成功，返回：", res.text)
+    except Exception as e:
+        print("❌ PushPlus推送失败：", str(e))
 
-# 获取环境变量 
-def get_env(): 
-    # 判断 COOKIE_QUARK是否存在于环境变量 
-    if "COOKIE_QUARK" in os.environ: 
-        # 读取系统变量以 \n 或 && 分割变量 
-        cookie_list = re.split('\n|&&', os.environ.get('COOKIE_QUARK')) 
-    else: 
-        # 标准日志输出 
-        print('❌未添加COOKIE_QUARK变量') 
-        send('夸克自动签到', '❌未添加COOKIE_QUARK变量') 
-        # 脚本退出 
-        sys.exit(0) 
 
-    return cookie_list 
+# 获取环境变量
+def get_env():
+    # 判断 COOKIE_QUARK是否存在于环境变量
+    if "COOKIE_QUARK" in os.environ:
+        # 读取系统变量以 \n 或 && 分割变量
+        cookie_list = re.split('\n|&&', os.environ.get('COOKIE_QUARK'))
+    else:
+        # 标准日志输出
+        print('❌未添加COOKIE_QUARK变量')
+        send('夸克自动签到', '❌未添加COOKIE_QUARK变量')
+        # 脚本退出
+        sys.exit(0)
 
-# 其他代码...
+    return cookie_list
+
 
 class Quark:
     '''
